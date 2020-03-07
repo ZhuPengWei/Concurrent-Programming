@@ -14,17 +14,17 @@
       - [2.1.1、为什么要使用多线程？](#211-为什么要使用多线程) 
       - [2.1.2、线程的状态](#212-线程的状态)
       - [2.1.3、Daemon线程](#213-Daemon线程)
-   - 2.2、启动和终止线程
-      - 2.2.1、启动线程与理解中断的意义
-      - 2.2.2、过期的suspend()、resume()和stop()
-      - 2.2.3、怎么安全的终止线程
+   - [2.2、启动和终止线程](#-22-启动和终止线程)
+      - [2.2.1、启动线程与理解中断的意义](#221-启动线程与理解中断的意义)
+      - [2.2.2、过期的suspend()、resume()和stop()](#222-过期的suspend()、resume()和stop())
+      - [2.2.3、怎么安全的终止线程](#223-怎么安全的终止线程)
    - 2.3、线程间的通信
-   - 2.3.1、volatile和synchronized关键字 
-   - 2.3.2、等待/通知机制
-   - 2.3.3、等待/通知机制的经典范式  
-   - 2.3.4、管道输入/输出流
-   - 2.3.5、Thread.join()的使用
-   - 2.3.6、ThreadLocal的使用
+      - 2.3.1、volatile和synchronized关键字 
+      - 2.3.2、等待/通知机制
+      - 2.3.3、等待/通知机制的经典范式  
+      - 2.3.4、管道输入/输出流
+      - 2.3.5、Thread.join()的使用
+      - 2.3.6、ThreadLocal的使用
    
 
 ### 2、并发编程的基础
@@ -226,3 +226,93 @@ public class DaemonDemo {
 注意：
 
 在构建Daemon线程的时候，不能依靠finally块中的内容来确保执行关闭或清理资源的逻辑
+
+
+#### 2.2.1、启动线程与理解中断的意义
+
+**1、启动线程的注意事项**
+
+启动一个线程前，最好为这个线程设置线程名称，因为这样在使用jstack分析程序或者进行问题排查的时，
+就会给开发人员提供一些提示，自定义的线程最好能够起个名称。
+
+**2、理解中断**
+
+中断可以理解为线程呢的一个标识位的属性，它表示一个运行中的线程是否被其他线程进行中断操作。
+中断好比其他线程对该线程打了招呼，其他线程通过调用该线程的interrupt()方法对其进行中断操作。
+
+线程通过经检查自身是否被中断来进行响应，线程通过isInterrupted()来进行判断是否被中断，也可以调用静态方法
+Thread.interrupted()对当前的线程的中断标志位进行复位。
+
+
+#### 2.2.2、过期的suspend()、resume()和stop()
+
+suspend()、resume()和stop()方法分别完成线程的暂停、恢复和终止的工作。但是这些API是过时的
+也是不建议使用的。
+
+不建议使用的原因主要有，以suspend()方法为例，在调用后，线程不会释放已经占有的资源（比如说锁），而是占有着资源进入睡眠状态，
+这样容易引起死锁的问题。同样，stop()方法在中介一个线程的时候不会保证线程的资源的正确的释放。通常是没有给予线程完成资源释放工作的机会，
+因此会导致程序可能在不确定的状态之下。
+
+暂停和恢复的操作可以用等待/通知的机制来替代。
+
+
+#### 2.2.3、怎么安全的终止线程
+
+中断状态是线程的一个标识位，而中断操作是一种简便的线程间的交互方式，而这种交互方式最适用来取消或停止任务。除了中断以外，还可以利用一个boolean的变量
+来控制是否需要停止任务并终止该线程
+
+在下面的代码中，创建了一个线程CountThread，他不断的进行变量累加，而主线程尝试对其进行中断操作和停止操作
+
+
+```
+public class Shutdown {
+
+    public static void main(String[] args) throws InterruptedException {
+
+        Runner one = new Runner();
+        Thread countThread = new Thread(one, "CountThread");
+        countThread.start();
+
+        // 睡眠一秒，main线程对CountThread进行中断，使CountThread能够感知中断而结束
+        Thread.sleep(1000);
+        countThread.interrupt();
+
+        Runner two = new Runner();
+        countThread = new Thread(two, "CountThread");
+        countThread.start();
+
+        // 睡眠1s，main线程对Runner two 进行取消，使CountThread能够感知on为false 而结束
+        Thread.sleep(1000);
+        two.cancel();
+
+    }
+
+    private static class Runner implements Runnable {
+        private long i;
+
+        private volatile boolean on = true;
+
+        @Override
+        public void run() {
+
+            while (on && !Thread.currentThread().isInterrupted()) {
+                i++;
+            }
+
+            System.out.println("Count i = " + i);
+        }
+
+        public void cancel() {
+            on = false;
+        }
+    }
+}
+```
+输出结果如下所示
+
+```
+Count i = 797204766
+Count i = 795433080
+```
+示例在执行的过程中，main线程通过中断操作和cancel方法均可使CountThread得以终止。
+这种通过标识位或者中断操作的方式能够使线程在终止时有机会去清理资源，而不是直接的将线程终止。
