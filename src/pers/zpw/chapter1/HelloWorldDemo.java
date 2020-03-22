@@ -1,5 +1,7 @@
 package pers.zpw.chapter1;
 
+import java.util.UUID;
+
 public class HelloWorldDemo {
 
     public static void main(String[] args) {
@@ -11,8 +13,7 @@ public class HelloWorldDemo {
             System.out.println("我不是主线程序，干了一些其他事情");
         }).start();
 
-
         // 主线程干了一些其他的事情
-
+        System.out.println(UUID.randomUUID().toString().replaceAll("-",""));
     }
 }
